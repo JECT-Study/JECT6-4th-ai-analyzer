@@ -11,7 +11,7 @@
 
 ## 1. HTTP API
 
-Base URL: `http://blog-ai-server:8000`
+Base URL: `http://analyzer-server:8000`
 
 ### 1.1 청킹 + 임베딩 저장
 

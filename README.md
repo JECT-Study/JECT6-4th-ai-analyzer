@@ -1,4 +1,4 @@
-# blog-ai-server
+# Analyzer-server
 
 블로그 글 청킹/임베딩, LLM 분석, 분석 기반 대화형 기능을 제공하는 FastAPI 기반 AI 백엔드.
 
