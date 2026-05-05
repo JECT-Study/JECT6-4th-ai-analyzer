@@ -1,0 +1,97 @@
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.domain.enums import ChatRole, SourceType
+
+
+# ===== Chunking =====
+class ChunkRequest(BaseModel):
+    user_id: int
+    source_type: SourceType
+    title: str
+    content: str = Field(..., min_length=1)
+    url: str | None = None
+    external_id: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChunkResponse(BaseModel):
+    document_id: int
+    chunk_count: int
+
+
+# ===== Similarity =====
+class SimilarityMatchRequest(BaseModel):
+    user_id: int
+    query_text: str = Field(..., min_length=1)
+    target_source_type: SourceType = SourceType.MY_BLOG
+    top_k: int = Field(default=5, ge=1, le=50)
+    # HyDE: 쿼리가 공고/외부글일 때 LLM으로 가상 답변을 생성해 임베딩 매칭 품질을 높임
+    query_source_type: SourceType | None = None
+    use_hyde: bool = False
+    # Hybrid: 벡터 + BM25 결합 검색 (RRF). 키워드 매칭이 중요한 공고에 효과적
+    use_hybrid: bool = False
+    keywords: str | None = None  # 미지정 시 query_text를 그대로 키워드로 사용
+
+
+class SimilarDocument(BaseModel):
+    document_id: int
+    title: str
+    url: str | None
+    score: float
+    matched_chunk_preview: str
+
+
+class SimilarityMatchResponse(BaseModel):
+    matches: list[SimilarDocument]
+    rewritten_query: str | None = None  # HyDE 사용 시 변환된 쿼리
+
+
+# ===== Analysis =====
+class AnalysisRequest(BaseModel):
+    """Queue 메시지에서도 동일하게 사용."""
+
+    user_id: int
+    document_id: int
+
+
+class AnalysisResult(BaseModel):
+    summary: str
+    key_topics: list[str]
+    tone: str
+    target_audience: str
+    suggestions: list[str]
+
+
+class AnalysisJobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    document_id: int
+    status: str
+    result: dict[str, Any]
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+# ===== Conversation =====
+class ChatMessage(BaseModel):
+    role: ChatRole
+    content: str
+
+
+class ChatRequest(BaseModel):
+    user_id: int
+    session_id: str
+    document_id: int  # 대화의 컨텍스트가 되는 분석 대상 글
+    message: str = Field(..., min_length=1, max_length=4000)
+
+
+class ChatResponse(BaseModel):
+    session_id: str
+    reply: str
+    tokens_used: int
+    tokens_remaining: int
