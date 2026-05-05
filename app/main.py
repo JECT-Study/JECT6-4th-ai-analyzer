@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.api import (
     analysis_router,
     conversation_router,
+    crawl_router,
     document_router,
     health_router,
 )
@@ -35,6 +36,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router.router)
     app.include_router(document_router.router)
+    app.include_router(crawl_router.router)
     app.include_router(analysis_router.router)
     app.include_router(conversation_router.router)
 

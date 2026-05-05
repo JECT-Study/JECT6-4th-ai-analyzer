@@ -41,6 +41,20 @@ class Settings(BaseSettings):
     chunk_size_tokens: int = 800
     chunk_overlap_tokens: int = 100
 
+    # Crawling
+    crawl_stream_name: str = "crawl:jobs"
+    crawl_consumer_group: str = "crawl-workers"
+    crawl_dlq_stream_name: str = "crawl:jobs:dlq"
+    crawl_worker_name: str = "worker-1"
+    crawl_batch_size: int = 10
+    crawl_block_ms: int = 5000
+    crawl_pending_idle_ms: int = 60000
+    crawl_max_retries: int = 3
+    crawl_request_timeout_seconds: float = 15.0
+    crawl_user_agent: str = "blog-ai-crawler/1.0"
+    crawl_domain_delay_seconds: float = 1.0
+    crawl_max_response_bytes: int = 2_000_000
+
     # Conversation
     max_conversation_tokens: int = 8000  # 누적 컨텍스트 한도
     max_turns_per_session: int = 30

@@ -36,6 +36,13 @@ class Document(Base):
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     doc_metadata: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    crawled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    ingestion_status: Mapped[str] = mapped_column(
+        String(32), default="completed", nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -19,7 +19,7 @@ worker → service → repository → ...
 - **service**: 비즈니스 로직 (청킹, 분석, 대화)
 - **repository**: 데이터 접근 (Postgres+pgvector, Redis)
 - **client**: 외부 시스템 (OpenAI, Redis)
-- **worker**: RabbitMQ consumer (분석 잡 처리)
+- **worker**: RabbitMQ consumer (분석 잡 처리), Redis Streams consumer (크롤링 파이프라인)
 - **domain**: 모델/스키마/enum
 - **core**: 설정, 예외, 로깅, DB 세션, rate limiter, tracing
 
@@ -43,13 +43,28 @@ worker → service → repository → ...
 
 청크 단위로 검색하되 document 단위로 max score 집계.
 
-### 3) 블로그 글 분석
+### 3) 크롤링 작업 등록
+`POST /v1/crawl/jobs`
+
+URL을 Redis Streams 내부 파이프라인에 등록한다. `crawl_worker`가 URL을 가져와
+HTML 본문을 추출하고, 기존 문서 청킹/임베딩 저장 흐름으로 pgvector에 저장한다.
+MinIO 같은 원본 HTML 저장소는 기본 경로에서 사용하지 않는다.
+
+보안 기본값:
+- `http`/`https` URL만 허용
+- localhost/private/link-local/metadata 주소 차단
+- URL credential 차단
+- redirect 미추적
+- 응답 크기 제한
+- 도메인 단위 rate limit
+
+### 4) 블로그 글 분석
 `POST /v1/analysis` (동기) 또는 RabbitMQ `blog.analysis` 큐 (비동기)
 
 LLM으로 요약, 주요 토픽, 톤, 타겟 독자, 개선 제안을 JSON으로 추출.
 실패 메시지는 DLX → `blog.analysis.dlq` 로 자동 격리.
 
-### 4) 분석 기반 대화
+### 5) 분석 기반 대화
 `POST /v1/conversations/messages`
 
 분석 결과를 컨텍스트로 사용자와 대화. 세션은 Redis에 저장.
@@ -86,6 +101,7 @@ docker-compose는 첫 기동 시 `migrations/001_init.sql`로 부트스트랩하
 ### 워커 단독 실행
 ```bash
 python -m app.worker.analysis_worker
+python -m app.worker.crawl_worker
 ```
 
 ## 환경변수
@@ -101,6 +117,12 @@ python -m app.worker.analysis_worker
 | `LLM_MAX_CONCURRENCY` | 20 | OpenAI 동시 호출 한도 |
 | `WORKER_CONCURRENCY` | 10 | 워커 prefetch |
 | `WORKER_MAX_RETRIES` | 3 | DLQ 보내기 전 재시도 횟수 |
+| `CRAWL_STREAM_NAME` | `crawl:jobs` | 크롤링 내부 Redis Stream |
+| `CRAWL_CONSUMER_GROUP` | `crawl-workers` | 크롤링 worker consumer group |
+| `CRAWL_DLQ_STREAM_NAME` | `crawl:jobs:dlq` | 크롤링 실패 메시지 stream |
+| `CRAWL_MAX_RETRIES` | 3 | 크롤링 DLQ 이동 전 재시도 횟수 |
+| `CRAWL_DOMAIN_DELAY_SECONDS` | 1 | 도메인별 크롤링 최소 간격 |
+| `CRAWL_MAX_RESPONSE_BYTES` | 2000000 | HTML 응답 최대 크기 |
 | `CHAT_RATE_CAPACITY` / `CHAT_RATE_REFILL_PER_SEC` | 30 / 0.2 | 사용자별 chat 한도 |
 | `ANALYSIS_RATE_CAPACITY` / `ANALYSIS_RATE_REFILL_PER_SEC` | 10 / 0.05 | 사용자별 analysis 한도 |
 | `MAX_CONVERSATION_TOKENS` | 8000 | 세션 토큰 한도 |
@@ -113,6 +135,7 @@ python -m app.worker.analysis_worker
 - **LLM 동시성**: `LLM_MAX_CONCURRENCY` semaphore로 OpenAI 호출 제한
 - **재시도**: tenacity로 transient 오류 흡수, 워커는 DLX 기반 메시지 재시도
 - **DLQ**: 영구 실패는 `blog.analysis.dlq`에 적재. UI/알람 운영 권장
+- **크롤링 파이프라인**: Redis Streams `crawl:jobs`를 사용. 영구 실패는 `crawl:jobs:dlq`에 적재
 - **Rate limit**: Redis Lua 토큰 버킷, 멀티 인스턴스에서 안전
 - **임베딩 캐시**: SHA256(text)+model 키, 동일 텍스트 비용 절감
 - **트레이싱**: OTLP 엔드포인트 설정 시 자동 활성화

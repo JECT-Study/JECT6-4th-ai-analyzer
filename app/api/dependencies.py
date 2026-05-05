@@ -7,6 +7,7 @@ from app.client.llm_client import LLMClient, get_llm_client
 from app.core.database import get_session
 from app.service.analysis_service import AnalysisService
 from app.service.conversation_service import ConversationService
+from app.service.crawl_service import CrawlService
 from app.service.document_service import DocumentService
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
@@ -25,8 +26,13 @@ def get_conversation_service(session: SessionDep, llm: LLMDep) -> ConversationSe
     return ConversationService(session, llm)
 
 
+def get_crawl_service() -> CrawlService:
+    return CrawlService()
+
+
 DocumentServiceDep = Annotated[DocumentService, Depends(get_document_service)]
 AnalysisServiceDep = Annotated[AnalysisService, Depends(get_analysis_service)]
 ConversationServiceDep = Annotated[
     ConversationService, Depends(get_conversation_service)
 ]
+CrawlServiceDep = Annotated[CrawlService, Depends(get_crawl_service)]

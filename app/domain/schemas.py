@@ -15,11 +15,30 @@ class ChunkRequest(BaseModel):
     url: str | None = None
     external_id: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    content_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    crawled_at: datetime | None = None
+    ingestion_status: str = Field(default="completed", max_length=32)
 
 
 class ChunkResponse(BaseModel):
     document_id: int
     chunk_count: int
+
+
+class CrawlJobRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: int
+    url: str = Field(..., min_length=1, max_length=2048)
+    source_type: SourceType = SourceType.EXT_BLOG
+    title: str | None = Field(default=None, max_length=512)
+    external_id: str | None = Field(default=None, max_length=255)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class CrawlJobResponse(BaseModel):
+    job_id: str
+    stream: str
 
 
 # ===== Similarity =====

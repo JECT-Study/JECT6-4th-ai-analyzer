@@ -144,6 +144,9 @@ class DocumentService:
             existing.content = request.content
             existing.url = request.url
             existing.doc_metadata = request.metadata
+            existing.content_hash = request.content_hash
+            existing.crawled_at = request.crawled_at
+            existing.ingestion_status = request.ingestion_status
             await self._documents.delete_chunks_by_document(existing.id)
             return existing
 
@@ -156,6 +159,9 @@ class DocumentService:
                 title=request.title,
                 content=request.content,
                 doc_metadata=request.metadata,
+                content_hash=request.content_hash,
+                crawled_at=request.crawled_at,
+                ingestion_status=request.ingestion_status,
             )
         )
 

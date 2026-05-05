@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS documents (
     title VARCHAR(512) NOT NULL,
     content TEXT NOT NULL,
     doc_metadata JSONB NOT NULL DEFAULT '{}',
+    content_hash VARCHAR(64),
+    crawled_at TIMESTAMPTZ,
+    ingestion_status VARCHAR(32) NOT NULL DEFAULT 'completed',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS ix_documents_user_source ON documents (user_id, source_type);
@@ -22,6 +25,7 @@ CREATE TABLE IF NOT EXISTS document_chunks (
     content TEXT NOT NULL,
     token_count INT NOT NULL,
     embedding vector(1536) NOT NULL,
+    content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple', content)) STORED,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS ix_chunks_document_id ON document_chunks (document_id);
@@ -29,6 +33,8 @@ CREATE INDEX IF NOT EXISTS ix_chunks_document_id ON document_chunks (document_id
 CREATE INDEX IF NOT EXISTS ix_chunks_embedding_hnsw
     ON document_chunks USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
+CREATE INDEX IF NOT EXISTS ix_chunks_content_tsv
+    ON document_chunks USING GIN (content_tsv);
 
 CREATE TABLE IF NOT EXISTS analysis_jobs (
     id BIGSERIAL PRIMARY KEY,

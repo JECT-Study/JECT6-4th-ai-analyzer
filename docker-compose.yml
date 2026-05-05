@@ -18,6 +18,12 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 1gb
+      --maxmemory-policy noeviction
     ports:
       - "6379:6379"
     healthcheck:
@@ -80,6 +86,20 @@ services:
     # 운영에선 replicas로 수평 확장
     deploy:
       replicas: 2
+
+  crawl_worker:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://blogai:blogai@postgres:5432/blogai
+      REDIS_URL: redis://redis:6379/0
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    command: ["python", "-m", "app.worker.crawl_worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   pgdata:
