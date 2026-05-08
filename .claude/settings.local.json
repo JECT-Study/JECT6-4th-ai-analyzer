@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(mkdir -p /mnt/c/Users/USER/Desktop/dev/ai/project/ject/logs)",
-      "Bash(touch /mnt/c/Users/USER/Desktop/dev/ai/project/ject/logs/.gitkeep)"
+      "Bash(touch /mnt/c/Users/USER/Desktop/dev/ai/project/ject/logs/.gitkeep)",
+      "Read(//home/user/.claude/plugins/**)",
+      "Read(//home/user/.claude/**)"
     ]
   }
 }
