@@ -9,21 +9,16 @@ from app.domain.models import Document, DocumentChunk
 from app.domain.schemas import (
     ChunkRequest,
     ChunkResponse,
-    SimilarDocument,
-    SimilarityMatchRequest,
-    SimilarityMatchResponse,
 )
 from app.repository.document_repository import DocumentRepository
 from app.repository.embedding_cache import EmbeddingCache
-from app.repository.similarity_repository import SimilarityRepository
 from app.service.chunker import TextChunker
-from app.service.query_rewriter import QueryRewriter
 
 logger = get_logger(__name__)
 
 
 class DocumentService:
-    """청킹/임베딩/유사도 검색을 담당하는 서비스."""
+    """청킹/임베딩 저장을 담당하는 서비스."""
 
     def __init__(
         self,
@@ -34,8 +29,10 @@ class DocumentService:
         self._session = session
         self._llm = llm_client
         self._documents = DocumentRepository(session)
-        self._similarity = SimilarityRepository(session)
-        self._rewriter = QueryRewriter(llm_client)
+        # NOTE(2026-05-13): 유사도 검색은 Spring 메인 서버 책임으로 이동했다.
+        # 이전 구현:
+        # self._similarity = SimilarityRepository(session)
+        # self._rewriter = QueryRewriter(llm_client)
         settings = get_settings()
         self._chunker = TextChunker(
             chunk_size=settings.chunk_size_tokens,
@@ -78,59 +75,62 @@ class DocumentService:
         )
         return ChunkResponse(document_id=document.id, chunk_count=len(chunk_entities))
 
-    async def find_similar(
-        self, request: SimilarityMatchRequest
-    ) -> SimilarityMatchResponse:
-        """쿼리 텍스트와 유사한 문서를 target_source_type 안에서 찾는다.
-
-        - use_hyde + query_source_type: 가상 본문으로 변환한 텍스트로 임베딩
-        - use_hybrid: 벡터 + BM25(RRF) 결합. BM25는 항상 원본 키워드 사용
-        """
-        # HyDE는 임베딩 쿼리에만 적용. BM25 키워드는 원문 유지가 유리.
-        embedding_query = request.query_text
-        rewritten: str | None = None
-        if request.use_hyde and request.query_source_type:
-            rewritten = await self._rewriter.rewrite(
-                request.query_source_type, request.query_text
-            )
-            if rewritten and rewritten != request.query_text:
-                embedding_query = rewritten
-            else:
-                rewritten = None
-
-        embeddings = await self._embed_with_cache([embedding_query])
-        embedding = embeddings[0]
-
-        if request.use_hybrid:
-            keywords = request.keywords or request.query_text
-            hits = await self._similarity.hybrid_search(
-                user_id=request.user_id,
-                embedding=embedding,
-                keywords_query=keywords,
-                target_source_type=request.target_source_type,
-                top_k=request.top_k,
-            )
-        else:
-            hits = await self._similarity.search_similar_documents(
-                user_id=request.user_id,
-                embedding=embedding,
-                target_source_type=request.target_source_type,
-                top_k=request.top_k,
-            )
-
-        return SimilarityMatchResponse(
-            matches=[
-                SimilarDocument(
-                    document_id=h.document_id,
-                    title=h.title,
-                    url=h.url,
-                    score=round(h.score, 4),
-                    matched_chunk_preview=h.chunk_preview,
-                )
-                for h in hits
-            ],
-            rewritten_query=rewritten,
-        )
+    # NOTE(2026-05-13): 유사도 검색은 Spring 메인 서버가 Vector DB를 직접 조회하는
+    # 책임으로 이동했다. 이전 구현은 이력 보존을 위해 주석으로 남긴다.
+    #
+    # async def find_similar(
+    #     self, request: SimilarityMatchRequest
+    # ) -> SimilarityMatchResponse:
+    #     """쿼리 텍스트와 유사한 문서를 target_source_type 안에서 찾는다.
+    #
+    #     - use_hyde + query_source_type: 가상 본문으로 변환한 텍스트로 임베딩
+    #     - use_hybrid: 벡터 + BM25(RRF) 결합. BM25는 항상 원본 키워드 사용
+    #     """
+    #     # HyDE는 임베딩 쿼리에만 적용. BM25 키워드는 원문 유지가 유리.
+    #     embedding_query = request.query_text
+    #     rewritten: str | None = None
+    #     if request.use_hyde and request.query_source_type:
+    #         rewritten = await self._rewriter.rewrite(
+    #             request.query_source_type, request.query_text
+    #         )
+    #         if rewritten and rewritten != request.query_text:
+    #             embedding_query = rewritten
+    #         else:
+    #             rewritten = None
+    #
+    #     embeddings = await self._embed_with_cache([embedding_query])
+    #     embedding = embeddings[0]
+    #
+    #     if request.use_hybrid:
+    #         keywords = request.keywords or request.query_text
+    #         hits = await self._similarity.hybrid_search(
+    #             user_id=request.user_id,
+    #             embedding=embedding,
+    #             keywords_query=keywords,
+    #             target_source_type=request.target_source_type,
+    #             top_k=request.top_k,
+    #         )
+    #     else:
+    #         hits = await self._similarity.search_similar_documents(
+    #             user_id=request.user_id,
+    #             embedding=embedding,
+    #             target_source_type=request.target_source_type,
+    #             top_k=request.top_k,
+    #         )
+    #
+    #     return SimilarityMatchResponse(
+    #         matches=[
+    #             SimilarDocument(
+    #                 document_id=h.document_id,
+    #                 title=h.title,
+    #                 url=h.url,
+    #                 score=round(h.score, 4),
+    #                 matched_chunk_preview=h.chunk_preview,
+    #             )
+    #             for h in hits
+    #         ],
+    #         rewritten_query=rewritten,
+    #     )
 
     async def _upsert_document(self, request: ChunkRequest) -> Document:
         existing: Document | None = None

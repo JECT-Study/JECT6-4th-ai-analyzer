@@ -3,8 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.domain.enums import SourceType
-from app.domain.schemas import ChunkRequest, SimilarityMatchRequest
-from app.repository.similarity_repository import SimilarityHit
+from app.domain.schemas import ChunkRequest
 from app.service.document_service import DocumentService
 
 
@@ -36,7 +35,9 @@ def service(session_mock, llm_mock, embedding_cache_mock):
     svc = DocumentService(session_mock, llm_mock, embedding_cache=embedding_cache_mock)
     # repository는 통째로 mock으로 교체
     svc._documents = AsyncMock()
-    svc._similarity = AsyncMock()
+    # NOTE(2026-05-13): 유사도 검색은 Spring 책임으로 이동해 Python 서비스에서
+    # 비활성화했다. 이전 테스트는 아래 주석으로 보존한다.
+    # svc._similarity = AsyncMock()
     return svc
 
 
@@ -88,105 +89,109 @@ class TestDocumentServiceIngest:
         service._documents.create.assert_not_awaited()
 
 
-class TestDocumentServiceSimilarity:
-    async def test_returns_matches_without_hyde(self, service, llm_mock):
-        service._similarity.search_similar_documents = AsyncMock(
-            return_value=[
-                SimilarityHit(
-                    document_id=1,
-                    title="블로그 글 A",
-                    url="https://example.com/a",
-                    score=0.91,
-                    chunk_preview="미리보기...",
-                )
-            ]
-        )
-
-        request = SimilarityMatchRequest(
-            user_id=1,
-            query_text="공고 텍스트",
-            target_source_type=SourceType.MY_BLOG,
-            top_k=5,
-        )
-        response = await service.find_similar(request)
-
-        assert len(response.matches) == 1
-        assert response.matches[0].score == 0.91
-        assert response.rewritten_query is None
-        # HyDE 미사용 → chat 호출 안 함
-        llm_mock.chat.assert_not_awaited()
-
-    async def test_uses_hyde_when_enabled(self, service, llm_mock):
-        service._similarity.search_similar_documents = AsyncMock(return_value=[])
-
-        request = SimilarityMatchRequest(
-            user_id=1,
-            query_text="원본 공고 텍스트",
-            target_source_type=SourceType.MY_BLOG,
-            query_source_type=SourceType.JOB_POSTING,
-            use_hyde=True,
-            top_k=5,
-        )
-        response = await service.find_similar(request)
-
-        # HyDE가 호출되어 변환된 쿼리가 응답에 포함
-        llm_mock.chat.assert_awaited_once()
-        assert response.rewritten_query == "가상 본문"
-        # 임베딩은 변환된 쿼리로 호출
-        llm_mock.embed.assert_awaited_once_with(["가상 본문"])
-
-    async def test_hyde_falls_back_when_rewritten_equals_original(
-        self, service, llm_mock
-    ):
-        # LLM이 원문과 동일한 텍스트를 돌려준 비정상 케이스
-        llm_mock.chat = AsyncMock(return_value="원본")
-        service._similarity.search_similar_documents = AsyncMock(return_value=[])
-
-        request = SimilarityMatchRequest(
-            user_id=1,
-            query_text="원본",
-            target_source_type=SourceType.MY_BLOG,
-            query_source_type=SourceType.JOB_POSTING,
-            use_hyde=True,
-        )
-        response = await service.find_similar(request)
-        assert response.rewritten_query is None
-
-    async def test_hybrid_search_uses_keywords_separate_from_hyde(
-        self, service, llm_mock
-    ):
-        """HyDE가 켜져 있어도 BM25는 원본 키워드를 사용해야 함."""
-        service._similarity.hybrid_search = AsyncMock(return_value=[])
-        llm_mock.chat = AsyncMock(return_value="가상으로 작성된 본문")
-
-        request = SimilarityMatchRequest(
-            user_id=1,
-            query_text="Kafka 기반 백엔드 채용",
-            target_source_type=SourceType.MY_BLOG,
-            query_source_type=SourceType.JOB_POSTING,
-            use_hyde=True,
-            use_hybrid=True,
-        )
-        response = await service.find_similar(request)
-
-        # 임베딩은 HyDE 변환된 텍스트로
-        llm_mock.embed.assert_awaited_once_with(["가상으로 작성된 본문"])
-        # BM25 키워드는 원본
-        called_kwargs = service._similarity.hybrid_search.await_args.kwargs
-        assert called_kwargs["keywords_query"] == "Kafka 기반 백엔드 채용"
-        assert response.rewritten_query == "가상으로 작성된 본문"
-
-    async def test_hybrid_search_uses_explicit_keywords_when_provided(
-        self, service, llm_mock
-    ):
-        service._similarity.hybrid_search = AsyncMock(return_value=[])
-        request = SimilarityMatchRequest(
-            user_id=1,
-            query_text="긴 공고 본문 ...",
-            keywords="Kafka Redis Spring",
-            target_source_type=SourceType.MY_BLOG,
-            use_hybrid=True,
-        )
-        await service.find_similar(request)
-        called_kwargs = service._similarity.hybrid_search.await_args.kwargs
-        assert called_kwargs["keywords_query"] == "Kafka Redis Spring"
+# NOTE(2026-05-13): 유사도 검색은 Spring 메인 서버가 Vector DB를 직접 조회하는
+# 책임으로 이동했다. 이전 DocumentService 유사도 테스트는 이력 보존을 위해
+# 주석으로 남긴다.
+#
+# class TestDocumentServiceSimilarity:
+#     async def test_returns_matches_without_hyde(self, service, llm_mock):
+#         service._similarity.search_similar_documents = AsyncMock(
+#             return_value=[
+#                 SimilarityHit(
+#                     document_id=1,
+#                     title="블로그 글 A",
+#                     url="https://example.com/a",
+#                     score=0.91,
+#                     chunk_preview="미리보기...",
+#                 )
+#             ]
+#         )
+#
+#         request = SimilarityMatchRequest(
+#             user_id=1,
+#             query_text="공고 텍스트",
+#             target_source_type=SourceType.MY_BLOG,
+#             top_k=5,
+#         )
+#         response = await service.find_similar(request)
+#
+#         assert len(response.matches) == 1
+#         assert response.matches[0].score == 0.91
+#         assert response.rewritten_query is None
+#         # HyDE 미사용 → chat 호출 안 함
+#         llm_mock.chat.assert_not_awaited()
+#
+#     async def test_uses_hyde_when_enabled(self, service, llm_mock):
+#         service._similarity.search_similar_documents = AsyncMock(return_value=[])
+#
+#         request = SimilarityMatchRequest(
+#             user_id=1,
+#             query_text="원본 공고 텍스트",
+#             target_source_type=SourceType.MY_BLOG,
+#             query_source_type=SourceType.JOB_POSTING,
+#             use_hyde=True,
+#             top_k=5,
+#         )
+#         response = await service.find_similar(request)
+#
+#         # HyDE가 호출되어 변환된 쿼리가 응답에 포함
+#         llm_mock.chat.assert_awaited_once()
+#         assert response.rewritten_query == "가상 본문"
+#         # 임베딩은 변환된 쿼리로 호출
+#         llm_mock.embed.assert_awaited_once_with(["가상 본문"])
+#
+#     async def test_hyde_falls_back_when_rewritten_equals_original(
+#         self, service, llm_mock
+#     ):
+#         # LLM이 원문과 동일한 텍스트를 돌려준 비정상 케이스
+#         llm_mock.chat = AsyncMock(return_value="원본")
+#         service._similarity.search_similar_documents = AsyncMock(return_value=[])
+#
+#         request = SimilarityMatchRequest(
+#             user_id=1,
+#             query_text="원본",
+#             target_source_type=SourceType.MY_BLOG,
+#             query_source_type=SourceType.JOB_POSTING,
+#             use_hyde=True,
+#         )
+#         response = await service.find_similar(request)
+#         assert response.rewritten_query is None
+#
+#     async def test_hybrid_search_uses_keywords_separate_from_hyde(
+#         self, service, llm_mock
+#     ):
+#         """HyDE가 켜져 있어도 BM25는 원본 키워드를 사용해야 함."""
+#         service._similarity.hybrid_search = AsyncMock(return_value=[])
+#         llm_mock.chat = AsyncMock(return_value="가상으로 작성된 본문")
+#
+#         request = SimilarityMatchRequest(
+#             user_id=1,
+#             query_text="Kafka 기반 백엔드 채용",
+#             target_source_type=SourceType.MY_BLOG,
+#             query_source_type=SourceType.JOB_POSTING,
+#             use_hyde=True,
+#             use_hybrid=True,
+#         )
+#         response = await service.find_similar(request)
+#
+#         # 임베딩은 HyDE 변환된 텍스트로
+#         llm_mock.embed.assert_awaited_once_with(["가상으로 작성된 본문"])
+#         # BM25 키워드는 원본
+#         called_kwargs = service._similarity.hybrid_search.await_args.kwargs
+#         assert called_kwargs["keywords_query"] == "Kafka 기반 백엔드 채용"
+#         assert response.rewritten_query == "가상으로 작성된 본문"
+#
+#     async def test_hybrid_search_uses_explicit_keywords_when_provided(
+#         self, service, llm_mock
+#     ):
+#         service._similarity.hybrid_search = AsyncMock(return_value=[])
+#         request = SimilarityMatchRequest(
+#             user_id=1,
+#             query_text="긴 공고 본문 ...",
+#             keywords="Kafka Redis Spring",
+#             target_source_type=SourceType.MY_BLOG,
+#             use_hybrid=True,
+#         )
+#         await service.find_similar(request)
+#         called_kwargs = service._similarity.hybrid_search.await_args.kwargs
+#         assert called_kwargs["keywords_query"] == "Kafka Redis Spring"

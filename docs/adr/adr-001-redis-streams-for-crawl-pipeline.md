@@ -36,6 +36,10 @@ POST /v1/crawl/jobs  ──▶  CrawlService.enqueue
 청킹을 트리거하는 **상위 작업 큐(crawl job queue)**다. 이후 본문에서 "큐"라고
 부르는 것은 이 부분을 의미한다.
 
+Spring 메인 서버는 이후 사용자 요청을 받아 pgvector/Vector DB에 직접 접근해
+유사도 검색을 수행한다. 분석 서버의 크롤링 파이프라인은 검색 API가 아니라
+청킹·임베딩·저장까지의 쓰기 파이프라인이다.
+
 ---
 
 ## 2. 컨텍스트(Context)
@@ -71,6 +75,8 @@ POST /v1/crawl/jobs  ──▶  CrawlService.enqueue
 - Redis는 이미 *세션 / 임베딩 캐시 / Lua 토큰 버킷 rate limit* 용도로 운영
   중이다(자세한 내용은 `redis_integration_codex.md` 참고).
 - RabbitMQ는 외부 contract 용도로만 운영 중이며, 내부 전용 토픽/큐는 아직 없다.
+- 유사도 검색은 Spring 메인 서버가 Vector DB를 직접 조회하는 방향으로 정리한다.
+  검색어 임베딩은 Spring이 직접 생성하거나, 별도 계약으로 분석 서버 API를 추가한다.
 - 운영 인력은 Redis와 RabbitMQ 둘 다 관리하고 있다.
 - 크롤링은 본 서버 내부에서 시작되어 본 서버 내부에서 끝난다(외부 시스템이
   publish하지 않는다).
@@ -150,6 +156,24 @@ POST /v1/crawl/jobs  ──▶  CrawlService.enqueue
 - DLX/메시지 우선순위/관리 UI 등 RabbitMQ 생태계가 이 시나리오에 잘 맞는다.
 - 즉, 이 ADR은 "전부 한 큐로 통일"이 아니라 **"외부 계약은 RabbitMQ, 내부
   파이프라인은 Redis Streams"** 라는 책임 분리를 명시한다.
+
+### 동시에, 유사도 검색은 Spring의 읽기 책임으로 둔다
+
+크롤링 워커는 수집된 본문을 `DocumentService.ingest_and_chunk`로 넘겨 문서,
+청크, 임베딩을 저장한다. 여기까지가 분석 서버의 책임이다.
+
+프론트엔드의 유사도 검색 요청은 Spring 메인 서버가 받는다. Spring은 검색어
+임베딩을 직접 생성하거나 별도 계약 API를 통해 얻고, Vector DB 조회·BM25/hybrid
+결합·권한 필터·응답 조립을 직접 수행한다.
+
+이렇게 나누는 이유는 다음과 같다.
+
+- 사용자 인증/인가, 공개 범위, 삭제 여부, 웹 응답 형식은 Spring의 비즈니스
+  책임에 가깝다.
+- 분석 서버가 검색 API까지 제공하면 Spring과 분석 서버 양쪽에 조회 정책이
+  나뉘어 변경 비용이 커진다.
+- 크롤링 파이프라인은 쓰기 중심이고, 검색은 사용자 요청 기반 읽기 중심이라
+  장애/성능/스케일링 축이 다르다.
 
 ---
 
@@ -248,6 +272,8 @@ except Exception:
 - 크롤 파이프라인의 모든 상태(큐/dedup/도메인 rate limit/DLQ)가 한 인프라 안에
   모여 코드가 단순하다.
 - 외부 계약(RabbitMQ `blog.analysis`)과 내부 파이프라인의 변경 영향이 분리된다.
+- 분석 서버의 책임이 청킹·임베딩·분석으로 좁혀지고, 검색/권한/응답 정책은
+  Spring에 모인다.
 - 새 인프라 도입 없이 즉시 출시 가능. 추후 트래픽이 커지면 분리 가능한 구조다.
 - 워커가 죽어도 `XAUTOCLAIM` 덕분에 메시지 손실 없이 다른 워커가 인계받는다.
 
@@ -274,6 +300,8 @@ except Exception:
 - 두 큐 시스템(RabbitMQ + Redis Streams)을 동시에 운영해야 한다. 본 서버에서는
   목적이 다르므로 의도적 결정이지만, 신규 합류자에게는 "왜 둘 다?"라는 학습
   포인트가 한 번 더 생긴다 — 본 ADR이 그 답이다.
+- Vector DB는 분석 서버가 쓰고 Spring이 읽는다. 따라서 스키마/인덱스 변경은
+  양쪽 계약을 확인해야 한다.
 
 ---
 
@@ -291,6 +319,8 @@ except Exception:
 4. **Redis HA 검토** — Sentinel 또는 Cluster. 현 구성은 single-instance.
 5. **메트릭 노출** — `XLEN`, `XPENDING` 결과를 OpenTelemetry/Prometheus로 노출
    (큐 적체·pending 누적 알람).
+6. **Spring 검색 구현 정리** — Vector DB similarity search, BM25/hybrid 결합,
+   권한 필터를 Spring 쪽 서비스 계약으로 문서화.
 
 ---
 
