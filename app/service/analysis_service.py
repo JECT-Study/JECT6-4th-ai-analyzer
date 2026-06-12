@@ -86,6 +86,7 @@ class AnalysisService:
             )
             raise
 
+        await self._session.refresh(job)
         return job
 
     async def get_analysis_for_document(self, document_id: int) -> AnalysisJob:
