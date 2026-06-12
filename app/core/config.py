@@ -40,7 +40,7 @@ class Settings(BaseSettings):
 
     # Ollama (llm_provider=ollama 시 사용)
     ollama_base_url: str = Field(default="http://localhost:11434")
-    ollama_chat_model: str = Field(default="qwen2.5:7b")
+    ollama_chat_model: str = Field(default="gemma4:e4b")
     ollama_embedding_model: str = Field(default="nomic-embed-text")
 
     # Demo mode: LLM 호출 없이 고정 결과 반환

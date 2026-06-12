@@ -11,7 +11,7 @@ from app.service.document_service import DocumentService
 def llm_mock():
     mock = AsyncMock()
     # 호출된 텍스트 수만큼 더미 임베딩 반환
-    mock.embed = AsyncMock(side_effect=lambda texts: [[0.0] * 1536 for _ in texts])
+    mock.embed = AsyncMock(side_effect=lambda texts: [[0.0] * 768 for _ in texts])
     mock.chat = AsyncMock(return_value="가상 본문")
     return mock
 

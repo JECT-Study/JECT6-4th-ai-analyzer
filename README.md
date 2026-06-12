@@ -76,7 +76,7 @@ worker ───▶ service ───▶ repository ───▶ ...
 
 ### 1) 청킹 + 임베딩 저장 — `POST /v1/documents/chunks`
 크롤러가 호출. 본문을 토큰 단위로 청킹(tiktoken `cl100k_base`)하고 임베딩하여
-pgvector(`vector(1536)`, HNSW + cosine)에 저장. `external_id`가 있으면 동일 문서를
+pgvector(`vector(768)`, HNSW + cosine)에 저장. `external_id`가 있으면 동일 문서를
 upsert(기존 청크 삭제 후 재생성). 임베딩은 `embed:{model}:{sha256}` 키로 Redis에
 30일 캐시 → 재크롤링 비용 절감.
 
@@ -163,7 +163,7 @@ python -m app.worker.crawl_worker      # Redis Streams 크롤 워커
 | `RABBITMQ_URL` | - | `amqp://...` |
 | `OPENAI_API_KEY` | - | OpenAI API key |
 | `LLM_MODEL` | `gpt-4o-mini` | 채팅/분석용 |
-| `EMBEDDING_MODEL` | `text-embedding-3-small` | 1536차원 |
+| `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text` | 768차원 |
 | `LLM_MAX_CONCURRENCY` | 20 | OpenAI 동시 호출 한도 |
 | `WORKER_CONCURRENCY` | 10 | 분석 워커 prefetch |
 | `WORKER_MAX_RETRIES` | 3 | 분석 DLQ 이동 전 재시도 |

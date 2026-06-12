@@ -53,7 +53,7 @@ _DEMO_ANALYSIS_RESULT = json.dumps({
     ],
 }, ensure_ascii=False)
 
-_DEMO_EMBEDDING = [0.9 if i < 10 else 0.01 for i in range(1536)]
+_DEMO_EMBEDDING = [0.9 if i < 10 else 0.01 for i in range(768)]
 
 
 class _NullSpan:

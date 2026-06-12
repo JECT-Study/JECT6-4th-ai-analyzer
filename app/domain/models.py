@@ -16,7 +16,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from app.domain.enums import AnalysisStatus, SourceType
 
-EMBEDDING_DIM = 1536  # text-embedding-3-small
+EMBEDDING_DIM = 768  # nomic-embed-text
 
 
 class Base(DeclarativeBase):

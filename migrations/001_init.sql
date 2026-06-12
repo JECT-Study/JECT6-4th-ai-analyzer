@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS document_chunks (
     chunk_index INT NOT NULL,
     content TEXT NOT NULL,
     token_count INT NOT NULL,
-    embedding vector(1536) NOT NULL,
+    embedding vector(768) NOT NULL,
     content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple', content)) STORED,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

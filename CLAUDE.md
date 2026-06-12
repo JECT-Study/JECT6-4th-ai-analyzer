@@ -177,7 +177,7 @@ Spring이 직접 처리하거나 별도 계약 API로 분리한다.
 
 ### 5.5 왜 HNSW + cosine인가?
 
-OpenAI `text-embedding-3-small`(1536d)에서는 cosine similarity가 표준. HNSW는 IVFFlat보다
+nomic-embed-text(768d)에서는 cosine similarity가 표준. HNSW는 IVFFlat보다
 recall이 안정적이고 sample 데이터가 적은 초기 단계에서도 잘 동작. 추후 데이터가 백만 단위로
 커지면 `ef_search` 튜닝 또는 IVFFlat 전환 검토.
 
@@ -199,7 +199,7 @@ recall이 안정적이고 sample 데이터가 적은 초기 단계에서도 잘 
 | `RABBITMQ_URL` | - | `amqp://user:pw@host/` |
 | `OPENAI_API_KEY` | - | OpenAI API 키 |
 | `LLM_MODEL` | `gpt-4o-mini` | 채팅·분석용 |
-| `EMBEDDING_MODEL` | `text-embedding-3-small` | 1536차원 |
+| `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text` | 768차원 |
 | `LLM_MAX_CONCURRENCY` | 20 | OpenAI 동시 호출 한도 |
 | `WORKER_CONCURRENCY` | 10 | 워커 prefetch_count |
 | `WORKER_MAX_RETRIES` | 3 | DLQ 보내기 전 재시도 |
