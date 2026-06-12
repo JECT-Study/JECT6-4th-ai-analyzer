@@ -80,11 +80,20 @@ class AnalysisRequest(BaseModel):
 
 
 class AnalysisResult(BaseModel):
+    # 기존 5필드 유지
     summary: str
     key_topics: list[str]
     tone: str
     target_audience: str
     suggestions: list[str]
+    # AI 대시보드 확장 필드
+    overall_score: int | None = None
+    percentile: int | None = None
+    blog_type: str | None = None
+    strength_summary: str | None = None
+    weakness_summary: str | None = None
+    top_categories: list[dict[str, Any]] | None = None
+    metrics: list[dict[str, Any]] | None = None
 
 
 class AnalysisJobResponse(BaseModel):

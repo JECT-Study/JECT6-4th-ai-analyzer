@@ -237,5 +237,5 @@ async def run(self) -> None:
 | A | `POST /v1/documents/chunks` | ❌ | ❌ | 청킹/임베딩 끝난 뒤 (동기) |
 | B | `POST /v1/crawl/jobs` | ✅ (`crawl_worker`) | ✅ (`crawl:jobs`) | 즉시 `202` (비동기) |
 
-Redis Stream은 **B 경로에서 분, analyzer-server 프로세스 안의** API ↔ worker
+Redis Stream은 **B 경로에서만, analyzer-server 프로세스 안의** API ↔ worker
 큐다.

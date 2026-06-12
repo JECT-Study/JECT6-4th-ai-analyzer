@@ -64,11 +64,15 @@ class AnalysisService:
         await self._jobs.update_status(job, AnalysisStatus.IN_PROGRESS)
 
         try:
-            result = await self._run_llm_analysis(document.title, document.content)
+            if self._settings.demo_mode or self._settings.llm_provider.lower() == "demo":
+                result = self._demo_analysis_result()
+                logger.info("analysis completed (demo mode) job_id=%s", job.id)
+            else:
+                result = await self._run_llm_analysis(document.title, document.content)
+                logger.info("analysis completed job_id=%s", job.id)
             await self._jobs.update_status(
                 job, AnalysisStatus.COMPLETED, result=result.model_dump()
             )
-            logger.info("analysis completed job_id=%s", job.id)
         except LLMClientError as exc:
             logger.exception("analysis failed job_id=%s", job.id)
             await self._jobs.update_status(
@@ -102,6 +106,33 @@ class AnalysisService:
                 "analysis rate limit exceeded",
                 retry_after_ms=result.retry_after_ms,
             )
+
+    def _demo_analysis_result(self) -> AnalysisResult:
+        return AnalysisResult(
+            summary="블로그 분석 결과입니다. (데모 모드 고정값)",
+            key_topics=["블로그", "리뷰", "체험단", "맛집", "뷰티"],
+            tone="친근하고 감성적인 문체",
+            target_audience="20-30대 여성 독자",
+            suggestions=["사진 품질 향상", "SEO 키워드 추가"],
+            overall_score=78,
+            percentile=72,
+            blog_type="라이프스타일 블로거",
+            strength_summary="감성적인 사진과 솔직한 후기가 강점입니다.",
+            weakness_summary="정보성 콘텐츠 보완 시 검색 유입이 증가합니다.",
+            top_categories=[
+                {"category": "FOOD", "score": 85},
+                {"category": "BEAUTY", "score": 72},
+                {"category": "LIVING", "score": 60},
+            ],
+            metrics=[
+                {"name": "콘텐츠 품질", "score": 80},
+                {"name": "정보 충실도", "score": 65},
+                {"name": "사진 활용", "score": 88},
+                {"name": "독자 친화도", "score": 76},
+                {"name": "SEO 최적화", "score": 70},
+                {"name": "일관성", "score": 82},
+            ],
+        )
 
     async def _run_llm_analysis(self, title: str, content: str) -> AnalysisResult:
         # 너무 긴 본문은 잘라서 비용 통제 (필요시 map-reduce 확장)

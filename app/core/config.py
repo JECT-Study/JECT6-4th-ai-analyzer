@@ -32,10 +32,19 @@ class Settings(BaseSettings):
     worker_max_retries: int = 3
 
     # LLM
-    openai_api_key: str
+    llm_provider: str = Field(default="openai")  # openai | ollama | demo
+    openai_api_key: str = Field(default="")
     llm_model: str = "gpt-4o-mini"
     embedding_model: str = "text-embedding-3-small"
-    llm_max_concurrency: int = 20  # 동시 LLM 호출 제한
+    llm_max_concurrency: int = 20
+
+    # Ollama (llm_provider=ollama 시 사용)
+    ollama_base_url: str = Field(default="http://localhost:11434")
+    ollama_chat_model: str = Field(default="qwen2.5:7b")
+    ollama_embedding_model: str = Field(default="nomic-embed-text")
+
+    # Demo mode: LLM 호출 없이 고정 결과 반환
+    demo_mode: bool = Field(default=False)
 
     # Chunking
     chunk_size_tokens: int = 800
