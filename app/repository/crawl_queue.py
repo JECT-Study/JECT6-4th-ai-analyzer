@@ -1,8 +1,5 @@
 import asyncio
-import json
-import time
 from dataclasses import dataclass
-from urllib.parse import urlparse
 
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
@@ -17,6 +14,8 @@ class CrawlMessage:
 
 
 class CrawlQueue:
+    """ject_crawl이 publish한 ingest 메시지를 consume하는 큐."""
+
     def __init__(self, redis: Redis) -> None:
         self._redis = redis
         self._settings = get_settings()
@@ -24,56 +23,6 @@ class CrawlQueue:
     @property
     def stream_name(self) -> str:
         return self._settings.crawl_stream_name
-
-    async def enqueue(
-        self,
-        *,
-        user_id: int,
-        url: str,
-        source_type: str,
-        title: str | None,
-        external_id: str | None,
-        metadata: dict,
-        retry_count: int = 0,
-    ) -> str:
-        payload = {
-            "user_id": str(user_id),
-            "url": url,
-            "source_type": source_type,
-            "title": title or "",
-            "external_id": external_id or "",
-            "metadata": json.dumps(metadata, ensure_ascii=False),
-            "retry_count": str(retry_count),
-        }
-        return await self._redis.xadd(self._settings.crawl_stream_name, payload)
-
-    async def mark_url_seen(self, url: str) -> bool:
-        added = await self._redis.sadd("crawl:seen:urls", url)
-        return bool(added)
-
-    async def unmark_url_seen(self, url: str) -> None:
-        await self._redis.srem("crawl:seen:urls", url)
-
-    async def retry_after_ms_for_domain(self, url: str) -> int:
-        domain = urlparse(url).hostname or ""
-        if not domain:
-            return 0
-        key = "crawl:ratelimit:domain"
-        now = time.time()
-        last = await self._redis.hget(key, domain)
-        if last is not None:
-            elapsed = now - float(last)
-            delay = self._settings.crawl_domain_delay_seconds
-            if elapsed < delay:
-                return int((delay - elapsed) * 1000)
-        await self._redis.hset(key, domain, now)
-        return 0
-
-    async def wait_for_domain_slot(self, url: str) -> None:
-        retry_after_ms = await self.retry_after_ms_for_domain(url)
-        if retry_after_ms > 0:
-            await asyncio.sleep(retry_after_ms / 1000)
-            await self.retry_after_ms_for_domain(url)
 
     async def ensure_group(self) -> None:
         try:
@@ -106,7 +55,6 @@ class CrawlQueue:
             start_id="0",
             count=self._settings.crawl_batch_size,
         )
-        # redis-py returns (next_start_id, messages, deleted_ids)
         messages = result[1] if len(result) > 1 else []
         return [
             CrawlMessage(id=message_id, fields=dict(fields))
@@ -120,9 +68,11 @@ class CrawlQueue:
             message_id,
         )
 
-    async def send_to_dlq(
-        self, message: CrawlMessage, *, error_message: str
-    ) -> str:
+    async def requeue(self, fields: dict[str, str]) -> str:
+        """재시도용 메시지를 스트림에 다시 적재."""
+        return await self._redis.xadd(self._settings.crawl_stream_name, fields)
+
+    async def send_to_dlq(self, message: CrawlMessage, *, error_message: str) -> str:
         payload = dict(message.fields)
         payload["failed_message_id"] = message.id
         payload["error_message"] = error_message[:1000]

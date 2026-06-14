@@ -25,21 +25,6 @@ class ChunkResponse(BaseModel):
     chunk_count: int
 
 
-class CrawlJobRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    user_id: int
-    url: str = Field(..., min_length=1, max_length=2048)
-    source_type: SourceType = SourceType.EXT_BLOG
-    title: str | None = Field(default=None, max_length=512)
-    external_id: str | None = Field(default=None, max_length=255)
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-
-class CrawlJobResponse(BaseModel):
-    job_id: str
-    stream: str
-
 
 # ===== Similarity =====
 # NOTE(2026-05-13): 프론트용 유사도 검색은 Spring 메인 서버 책임으로 이동했다.
