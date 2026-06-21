@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import json
 import signal
@@ -6,6 +8,7 @@ import aio_pika
 from aio_pika.abc import AbstractIncomingMessage
 
 from app.client.llm_client import get_llm_client
+from app.client.redis_client import get_redis
 from app.core.config import get_settings
 from app.core.database import session_scope
 from app.core.logging import get_logger, setup_logging
@@ -85,10 +88,35 @@ class AnalysisWorker:
             await message.reject(requeue=False)
             return
 
+        # document_id 없고 correlation_id 있으면 ingest 완료 대기
+        if request.document_id is None and request.correlation_id:
+            doc_id = await self._resolve_document_id(request.correlation_id)
+            if doc_id is None:
+                retry_count = self._read_retry_count(message)
+                if retry_count < self._settings.worker_max_retries:
+                    logger.info(
+                        "ingest not ready yet, requeueing correlation_id=%s retry=%s",
+                        request.correlation_id, retry_count + 1,
+                    )
+                    await self._republish_with_retry(message, retry_count + 1)
+                    await message.ack()
+                else:
+                    logger.error("ingest completion not found after retries correlation_id=%s", request.correlation_id)
+                    await message.reject(requeue=False)
+                return
+            request = AnalysisRequest(
+                user_id=request.user_id,
+                document_id=doc_id,
+                correlation_id=request.correlation_id,
+                analysis_mode=request.analysis_mode,
+                batch_id=request.batch_id,
+                source_document_ids=request.source_document_ids,
+            )
+
         try:
             async with session_scope() as session:
                 service = AnalysisService(session, self._llm_client)
-                await service.analyze(request)
+                await service.analyze(request, enforce_rate_limit=False)
             await message.ack()
             logger.info(
                 "analysis processed user_id=%s document_id=%s",
@@ -127,6 +155,16 @@ class AnalysisWorker:
                 exc,
             )
             await message.reject(requeue=False)
+
+    async def _resolve_document_id(self, correlation_id: str) -> int | None:
+        """Redis에서 ingest 완료 신호를 조회해 document_id를 반환. 없으면 None."""
+        try:
+            redis = get_redis()
+            value = await redis.get(f"ingest:done:{correlation_id}")
+            return int(value) if value else None
+        except Exception as exc:
+            logger.warning("redis lookup failed correlation_id=%s err=%s", correlation_id, exc)
+            return None
 
     @staticmethod
     def _read_retry_count(message: AbstractIncomingMessage) -> int:

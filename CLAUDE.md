@@ -233,16 +233,29 @@ docker compose logs -f api worker
 
 ### 7.2 마이그레이션
 
+**공식 마이그레이션 경로는 Alembic이다.**
+
+`docker compose up` 시 `migrate` 서비스가 먼저 `alembic upgrade head`를 실행한 뒤
+api/worker/crawl_worker가 기동된다.
+
 ```bash
-# 컨테이너 안에서
-docker compose exec api alembic upgrade head
+# 리비전 체인 확인
+docker compose exec api alembic history --verbose
 
 # 새 리비전 만들기 (모델 변경 후)
 docker compose exec api alembic revision --autogenerate -m "add foo column"
+
+# 수동으로 마이그레이션 재실행 (이미 적용돼 있으면 no-op)
+docker compose run --rm migrate
 ```
 
-`migrations/001_init.sql`은 docker-compose 첫 기동 시 부트스트랩용. 이후 스키마 변경은
-**alembic으로만** 관리.
+`migrations/001_init.sql`은 **데모 / 수동 초기화 전용**이다.
+로컬 개발 시 Alembic 없이 빈 DB를 빠르게 구성하려는 경우에만 직접 실행한다.
+`docker-entrypoint-initdb.d`에는 마운트하지 않는다 — Alembic이 alembic_version 테이블을
+관리하므로 SQL 직접 초기화 시 버전 충돌이 발생한다.
+
+Alembic 리비전 체인: `0001_init` → `0002_tsvector` → `0003_crawl_metadata`
+스키마 변경 시 Alembic 리비전만 추가하면 된다; `001_init.sql`은 함께 갱신할 의무 없음.
 
 ### 7.3 단위 테스트
 

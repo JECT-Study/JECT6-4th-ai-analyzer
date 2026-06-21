@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """사용자별 토큰 버킷 레이트 리미터.
 
 Redis + Lua 스크립트로 원자적 처리. 멀티 인스턴스 환경에서도 정확히 동작.

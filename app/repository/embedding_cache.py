@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """임베딩 캐시.
 
 청크 텍스트의 SHA256을 키로 해서 Redis에 임베딩을 저장.
@@ -55,7 +57,11 @@ class EmbeddingCache:
     ) -> None:
         if not texts:
             return
+        if len(texts) != len(embeddings):
+            raise ValueError(
+                f"texts({len(texts)})와 embeddings({len(embeddings)}) 길이가 다릅니다"
+            )
         pipe = self._redis.pipeline()
-        for text, emb in zip(texts, embeddings, strict=True):
+        for text, emb in zip(texts, embeddings):
             pipe.set(self._key(text), json.dumps(emb), ex=self._ttl)
         await pipe.execute()

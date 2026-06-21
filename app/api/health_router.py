@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Health check 엔드포인트.
 
 - /health/live: 프로세스가 살아있는지만 확인. k8s livenessProbe.

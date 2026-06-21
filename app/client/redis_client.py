@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from redis.asyncio import Redis
 
 from app.core.config import get_settings

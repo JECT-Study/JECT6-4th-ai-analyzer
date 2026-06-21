@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import json
 from collections.abc import Sequence
@@ -107,6 +109,11 @@ class LLMClient:
             return self._settings.ollama_embedding_model
         return self._settings.embedding_model
 
+    def _supports_dimensions(self) -> bool:
+        """OpenAI text-embedding-3-* 계열만 dimensions 파라미터를 지원한다."""
+        provider = self._settings.llm_provider.lower()
+        return provider == "openai" and self._embedding_model().startswith("text-embedding-3")
+
     def count_tokens(self, text: str) -> int:
         return len(self._encoder.encode(text))
 
@@ -128,10 +135,13 @@ class LLMClient:
                 span.set_attribute("llm.model", self._embedding_model())
                 span.set_attribute("llm.input_count", len(texts))
                 try:
-                    response = await self._client.embeddings.create(
-                        model=self._embedding_model(),
-                        input=list(texts),
-                    )
+                    kwargs: dict = {
+                        "model": self._embedding_model(),
+                        "input": list(texts),
+                    }
+                    if self._supports_dimensions():
+                        kwargs["dimensions"] = self._settings.embedding_dim
+                    response = await self._client.embeddings.create(**kwargs)
                     span.set_attribute("llm.tokens.total", response.usage.total_tokens if response.usage else 0)
                     return [item.embedding for item in response.data]
                 except Exception as exc:

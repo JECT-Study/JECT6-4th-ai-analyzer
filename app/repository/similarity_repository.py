@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # NOTE(2026-05-13): 유사도 검색은 Spring 메인 서버가 Vector DB를 직접 조회하는
 # 책임으로 이동했다. Python 분석 서버의 이전 pgvector 검색 구현은 이력 보존을
 # 위해 주석으로 남긴다.

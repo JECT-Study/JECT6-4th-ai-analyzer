@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from functools import lru_cache
 
 from pydantic import Field
@@ -36,11 +38,12 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(default="")
     llm_model: str = "gpt-4o-mini"
     embedding_model: str = "text-embedding-3-small"
+    embedding_dim: int = 768  # vector(768) 스키마와 일치해야 함
     llm_max_concurrency: int = 20
 
     # Ollama (llm_provider=ollama 시 사용)
     ollama_base_url: str = Field(default="http://localhost:11434")
-    ollama_chat_model: str = Field(default="gemma4:e4b")
+    ollama_chat_model: str = Field(default="qwen2.5:7b")
     ollama_embedding_model: str = Field(default="nomic-embed-text")
 
     # Demo mode: LLM 호출 없이 고정 결과 반환

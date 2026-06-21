@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 class AppException(Exception):
     """애플리케이션 베이스 예외."""
 

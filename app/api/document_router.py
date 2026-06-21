@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from fastapi import APIRouter, status
 
 from app.api.dependencies import DocumentServiceDep

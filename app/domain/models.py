@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -31,13 +32,13 @@ class Document(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
     source_type: Mapped[SourceType] = mapped_column(String(32), nullable=False)
-    external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    external_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    url: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     doc_metadata: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
-    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    crawled_at: Mapped[datetime | None] = mapped_column(
+    content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    crawled_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     ingestion_status: Mapped[str] = mapped_column(
@@ -102,7 +103,7 @@ class AnalysisJob(Base):
         String(32), default=AnalysisStatus.PENDING, nullable=False
     )
     result: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
-    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

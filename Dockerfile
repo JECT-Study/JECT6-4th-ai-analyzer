@@ -19,7 +19,10 @@ RUN pip install -r requirements.txt
 
 # 애플리케이션 코드 복사
 COPY app ./app
-COPY migrations ./migrations
+# Alembic 마이그레이션 파일 포함 (migrate 서비스 및 alembic upgrade head 실행에 필요)
+# migrations/001_init.sql은 데모/수동 초기화 전용이므로 이미지에 포함하지 않는다.
+COPY alembic ./alembic
+COPY alembic.ini ./alembic.ini
 
 # 비-root 사용자로 실행
 RUN useradd --create-home --uid 1000 appuser \

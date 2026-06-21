@@ -1,9 +1,17 @@
+from __future__ import annotations
+
 from datetime import datetime
+from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.enums import ChatRole, SourceType
+
+
+class AnalysisMode(str, Enum):
+    FULL_BLOG = "FULL_BLOG"
+    POST = "POST"
 
 
 # ===== Chunking =====
@@ -61,7 +69,11 @@ class AnalysisRequest(BaseModel):
     """Queue 메시지에서도 동일하게 사용."""
 
     user_id: int
-    document_id: int
+    document_id: int | None = None
+    correlation_id: str | None = None
+    analysis_mode: AnalysisMode | None = None
+    batch_id: str | None = None
+    source_document_ids: list[int] | None = None
 
 
 class AnalysisResult(BaseModel):
@@ -79,6 +91,15 @@ class AnalysisResult(BaseModel):
     weakness_summary: str | None = None
     top_categories: list[dict[str, Any]] | None = None
     metrics: list[dict[str, Any]] | None = None
+    # 분석 모드 메타데이터
+    analysis_mode: str | None = None
+    blog_id: int | None = None
+    source_document_ids: list[int] | None = None
+    # FULL_BLOG 인플루언서 벤치마크 필드 (ext_blog 컨텍스트 사용 시 채워짐)
+    benchmark_summary: str | None = None
+    competitive_strengths: list[str] | None = None
+    competitive_gaps: list[str] | None = None
+    reference_blogger_patterns: list[str] | None = None
 
 
 class AnalysisJobResponse(BaseModel):
