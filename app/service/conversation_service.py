@@ -15,6 +15,7 @@ from app.core.rate_limiter import RateLimiter
 from app.domain.enums import AnalysisStatus, ChatRole
 from app.domain.schemas import ChatMessage, ChatRequest, ChatResponse
 from app.repository.analysis_repository import AnalysisJobRepository
+from app.repository.context_retrieval_repository import ContextRetrievalRepository
 from app.repository.conversation_repository import ConversationRepository
 from app.repository.document_repository import DocumentRepository
 
@@ -29,9 +30,23 @@ _CHAT_SYSTEM_PROMPT_TEMPLATE = """\
 
 [글 분석 결과]
 {analysis}
-
+{retrieval_context}
 위 정보를 기반으로 사용자의 질문에 친절하고 구체적으로 답변하세요.
 """
+
+_RETRIEVAL_SECTION_TEMPLATE = """\
+
+=== 참고: 내 블로그 관련 글 ===
+{blog_context}
+
+=== 참고: 유사 체험단 공고 ===
+{job_context}
+
+"""
+
+# 소스별 토큰 예산 비율
+_BUDGET_BLOG = 0.40
+_BUDGET_JOB  = 0.35
 
 
 class ConversationService:
@@ -48,6 +63,7 @@ class ConversationService:
         self._llm = llm_client
         self._documents = DocumentRepository(session)
         self._jobs = AnalysisJobRepository(session)
+        self._context = ContextRetrievalRepository(session)
         self._conversations = conversation_repository or ConversationRepository(
             get_redis()
         )
@@ -71,8 +87,10 @@ class ConversationService:
         if len(history) >= self._settings.max_turns_per_session * 2:
             raise TokenLimitExceededError("max turns per session reached")
 
-        # System prompt는 매번 분석 결과로 새로 생성 (Redis에 저장 X, 토큰 절약)
-        system_prompt = await self._build_system_prompt(request.document_id)
+        # System prompt는 매번 분석 결과 + 멀티소스 RAG 컨텍스트로 생성
+        system_prompt, retrieval_tokens = await self._build_system_prompt(
+            request.document_id, request.user_id, request.message
+        )
 
         user_message = ChatMessage(role=ChatRole.USER, content=request.message)
         messages_for_llm = [
@@ -92,7 +110,8 @@ class ConversationService:
         await self._conversations.append_message(request.session_id, user_message)
         await self._conversations.append_message(request.session_id, reply_message)
 
-        consumed = request_tokens + self._llm.count_tokens(reply_text)
+        # D-1: retrieval 컨텍스트 토큰도 소비량에 포함 (세션 한도를 실제 LLM 소비와 일치시킴)
+        consumed = request_tokens + self._llm.count_tokens(reply_text) + retrieval_tokens
         new_total = await self._conversations.add_token_usage(
             request.session_id, consumed
         )
@@ -127,7 +146,10 @@ class ConversationService:
         if document is None or document.user_id != request.user_id:
             raise NotFoundError(f"document not accessible: {request.document_id}")
 
-    async def _build_system_prompt(self, document_id: int) -> str:
+    async def _build_system_prompt(
+        self, document_id: int, user_id: int, user_query: str
+    ) -> tuple[str, int]:
+        """system prompt와 retrieval 컨텍스트 토큰 수를 함께 반환한다."""
         document = await self._documents.get_by_id(document_id)
         if document is None:
             raise NotFoundError(f"document not found: {document_id}")
@@ -138,9 +160,64 @@ class ConversationService:
         else:
             analysis_text = self._format_analysis(job.result)
 
-        return _CHAT_SYSTEM_PROMPT_TEMPLATE.format(
-            title=document.title, analysis=analysis_text
+        retrieval_section = await self._build_retrieval_section(
+            document_id=document_id,
+            user_id=user_id,
+            user_query=user_query,
         )
+
+        prompt = _CHAT_SYSTEM_PROMPT_TEMPLATE.format(
+            title=document.title,
+            analysis=analysis_text,
+            retrieval_context=retrieval_section,
+        )
+        retrieval_tokens = self._llm.count_tokens(retrieval_section) if retrieval_section else 0
+        return prompt, retrieval_tokens
+
+    async def _build_retrieval_section(
+        self, document_id: int, user_id: int, user_query: str
+    ) -> str:
+        """사용자 쿼리 임베딩으로 블로그·공고 컨텍스트를 검색한다. 실패하면 빈 문자열 반환."""
+        try:
+            query_emb_list = await self._llm.embed([user_query])
+            if not query_emb_list:
+                return ""
+            query_emb = query_emb_list[0]
+
+            blog_chunks = await self._context.find_my_blog_context(
+                user_id=user_id,
+                embedding=query_emb,
+                exclude_document_id=document_id,
+                top_k=3,
+            )
+            job_chunks = await self._context.find_job_posting_context(
+                embedding=query_emb,
+                top_k=3,
+            )
+
+            if not blog_chunks and not job_chunks:
+                return ""
+
+            char_budget_blog = int(self._settings.max_conversation_tokens * _BUDGET_BLOG * 4)
+            char_budget_job  = int(self._settings.max_conversation_tokens * _BUDGET_JOB  * 4)
+
+            blog_text = "\n\n".join(
+                f"[{c.title}]\n{c.content_preview}"[:char_budget_blog // max(1, len(blog_chunks))]
+                for c in blog_chunks
+            ) or "관련 글 없음"
+
+            job_text = "\n\n".join(
+                f"[{c.title}]\n{c.content_preview}"[:char_budget_job // max(1, len(job_chunks))]
+                for c in job_chunks
+            ) or "관련 공고 없음"
+
+            return _RETRIEVAL_SECTION_TEMPLATE.format(
+                blog_context=blog_text,
+                job_context=job_text,
+            )
+        except Exception as exc:
+            logger.warning("retrieval section build failed document_id=%s err=%s", document_id, exc)
+            return ""
 
     @staticmethod
     def _format_analysis(result: dict) -> str:

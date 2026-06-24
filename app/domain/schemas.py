@@ -132,3 +132,16 @@ class ChatResponse(BaseModel):
     reply: str
     tokens_used: int
     tokens_remaining: int
+
+
+# ===== Profile Embedding =====
+class ProfileEmbedRequest(BaseModel):
+    user_id: int = Field(..., gt=0)
+    profile_text: str = Field(..., min_length=20)
+    source: str = Field(default="ONBOARDING", max_length=32)
+
+
+class ProfileEmbedResponse(BaseModel):
+    user_id: int
+    stored: bool
+    has_embedding: bool

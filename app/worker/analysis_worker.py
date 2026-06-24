@@ -12,10 +12,13 @@ from app.client.redis_client import get_redis
 from app.core.config import get_settings
 from app.core.database import session_scope
 from app.core.logging import get_logger, setup_logging
+from app.domain.models import AnalysisJob
 from app.domain.schemas import AnalysisRequest
 from app.service.analysis_service import AnalysisService
 
 logger = get_logger(__name__)
+
+COMPLETED_QUEUE = "blog.analysis.completed"
 
 
 class AnalysisWorker:
@@ -116,13 +119,15 @@ class AnalysisWorker:
         try:
             async with session_scope() as session:
                 service = AnalysisService(session, self._llm_client)
-                await service.analyze(request, enforce_rate_limit=False)
+                job = await service.analyze(request, enforce_rate_limit=False)
             await message.ack()
             logger.info(
-                "analysis processed user_id=%s document_id=%s",
+                "analysis processed user_id=%s document_id=%s job_id=%s",
                 request.user_id,
                 request.document_id,
+                job.id,
             )
+            await self._publish_completed(request, job, status="SUCCESS")
         except Exception as exc:
             await self._handle_failure(message, request, exc)
 
@@ -155,6 +160,7 @@ class AnalysisWorker:
                 exc,
             )
             await message.reject(requeue=False)
+            await self._publish_completed(request, None, status="FAILED")
 
     async def _resolve_document_id(self, correlation_id: str) -> int | None:
         """Redis에서 ingest 완료 신호를 조회해 document_id를 반환. 없으면 None."""
@@ -174,6 +180,40 @@ class AnalysisWorker:
             return int(value)
         except (TypeError, ValueError):
             return 0
+
+    async def _publish_completed(
+        self,
+        request: AnalysisRequest,
+        job: AnalysisJob | None,
+        *,
+        status: str,
+    ) -> None:
+        """분석 완료/실패 이벤트를 Spring이 수신하는 큐에 발행한다."""
+        if self._channel is None:
+            logger.warning("cannot publish completed: channel not ready")
+            return
+        try:
+            payload = {
+                "user_id": request.user_id,
+                "document_id": request.document_id,
+                "analysis_job_id": job.id if job else None,
+                "analysis_mode": (request.analysis_mode.value if request.analysis_mode else "POST"),
+                "blog_id": None,
+                "batch_id": request.batch_id,
+                "correlation_id": request.correlation_id,
+                "status": status,
+            }
+            await self._channel.default_exchange.publish(
+                aio_pika.Message(
+                    body=json.dumps(payload).encode(),
+                    content_type="application/json",
+                    delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+                ),
+                routing_key=COMPLETED_QUEUE,
+            )
+            logger.info("completed event published status=%s job_id=%s", status, job.id if job else None)
+        except Exception as exc:
+            logger.warning("failed to publish completed event err=%s", exc)
 
     async def _republish_with_retry(
         self, message: AbstractIncomingMessage, next_count: int

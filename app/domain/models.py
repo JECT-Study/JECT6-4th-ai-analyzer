@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -55,6 +56,10 @@ class Document(Base):
     __table_args__ = (
         Index("ix_documents_user_source", "user_id", "source_type"),
         Index("ix_documents_external_id", "external_id"),
+        UniqueConstraint(
+            "user_id", "source_type", "external_id",
+            name="uq_documents_user_source_external",
+        ),
     )
 
 
@@ -86,6 +91,49 @@ class DocumentChunk(Base):
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
         Index("ix_chunks_document_id", "document_id"),
+    )
+
+
+class BlogDiagnosis(Base):
+    """R2: 6지표 진단 결과. Analyzer가 소유하고, Spring은 read 위주로 접근한다."""
+
+    __tablename__ = "blog_diagnoses"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    analysis_job_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("analysis_jobs.id", ondelete="SET NULL"), nullable=True
+    )
+    metrics: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    category_fit: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    strengths: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    weaknesses: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    result_embedding: Mapped[Optional[list[float]]] = mapped_column(
+        Vector(EMBEDDING_DIM), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ProfileEmbedding(Base):
+    """R4: 온보딩 프로필 임베딩. Spring이 read-only로 접근하여 벡터 추천에 사용한다."""
+
+    __tablename__ = "profile_embeddings"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIM), nullable=False)
+    profile_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        # 최신 row 조회 쿼리(ORDER BY created_at DESC LIMIT 1) 최적화
+        Index("ix_profile_embeddings_user_created", "user_id", "created_at"),
+        # 동일 프로필 해시 중복 방지: NULL은 유니크 제약 대상 외
+        UniqueConstraint("user_id", "profile_hash", name="uq_profile_embeddings_user_hash"),
     )
 
 

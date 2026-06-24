@@ -4,6 +4,7 @@ import fakeredis.aioredis
 import pytest
 
 from app.core.exceptions import NotFoundError, TokenLimitExceededError
+from app.core.rate_limiter import RateLimiter, RateLimitResult
 from app.domain.enums import AnalysisStatus, ChatRole
 from app.domain.schemas import ChatRequest
 from app.repository.conversation_repository import ConversationRepository
@@ -45,11 +46,21 @@ def conversation_repo(redis_client):
 
 
 @pytest.fixture
+def rate_limiter_mock():
+    """rate_limiter를 mock으로 대체 — 실제 Redis 연결 없음."""
+    mock = MagicMock(spec=RateLimiter)
+    mock.consume = AsyncMock(return_value=RateLimitResult(allowed=True, remaining=30, retry_after_ms=0))
+    return mock
+
+
+@pytest.fixture
 def llm_mock():
     mock = AsyncMock()
     mock.chat = AsyncMock(return_value="LLM 응답입니다.")
     # 한 단어 약 1토큰으로 단순 카운트
-    mock.count_tokens = MagicMock(side_effect=lambda text: max(1, len(text.split())))
+    mock.count_tokens = MagicMock(side_effect=lambda text: max(1, len((text or "").split())))
+    # 임베딩: 빈 리스트 반환 → retrieval 섹션 생략
+    mock.embed = AsyncMock(return_value=[])
     return mock
 
 
@@ -59,7 +70,7 @@ def session_mock():
 
 
 @pytest.fixture
-def service_factory(monkeypatch, session_mock, llm_mock, conversation_repo):
+def service_factory(monkeypatch, session_mock, llm_mock, conversation_repo, rate_limiter_mock):
     """ConversationService를 만들면서 내부 repository 들을 mock으로 치환."""
 
     def _make(*, document=None, job=None):
@@ -70,10 +81,15 @@ def service_factory(monkeypatch, session_mock, llm_mock, conversation_repo):
             session_mock,
             llm_mock,
             conversation_repository=conversation_repo,
+            rate_limiter=rate_limiter_mock,  # 실제 Redis 연결 방지
         )
 
         service._documents.get_by_id = AsyncMock(return_value=document)
         service._jobs.get_latest_by_document = AsyncMock(return_value=job)
+        # retrieval repository — 빈 결과 반환으로 RAG 섹션 생략
+        service._context = AsyncMock()
+        service._context.find_my_blog_context = AsyncMock(return_value=[])
+        service._context.find_job_posting_context = AsyncMock(return_value=[])
         return service
 
     return _make
