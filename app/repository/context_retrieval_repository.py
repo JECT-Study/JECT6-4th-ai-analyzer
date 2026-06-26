@@ -30,7 +30,7 @@ class ContextRetrievalRepository:
         """문서의 청크 임베딩 평균(대표 벡터)을 반환."""
         sql = text(
             """
-            SELECT avg(embedding::float[])::vector AS avg_emb
+            SELECT avg(embedding) AS avg_emb
             FROM document_chunks
             WHERE document_id = :document_id
             """
@@ -40,7 +40,12 @@ class ContextRetrievalRepository:
         if row is None or row["avg_emb"] is None:
             return None
         emb = row["avg_emb"]
-        return list(emb) if not isinstance(emb, list) else emb
+        if isinstance(emb, list):
+            return emb
+        # pgvector returns vector as "[0.1,0.2,...]" string via asyncpg
+        if isinstance(emb, str):
+            return [float(x) for x in emb.strip("[]").split(",")]
+        return list(emb)
 
     async def find_my_blog_context(
         self,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Response, status
 
 from app.api.dependencies import ConversationServiceDep
 from app.domain.schemas import ChatRequest, ChatResponse
@@ -23,6 +23,8 @@ async def send_message(
 @router.delete(
     "/{session_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+    response_class=Response,
     summary="대화 세션 초기화",
 )
 async def reset_session(
