@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0005_profile_embedding_hash_index"
+revision = "0005_profile_hash"
 down_revision = "0004_r1_r2_r4"
 branch_labels = None
 depends_on = None

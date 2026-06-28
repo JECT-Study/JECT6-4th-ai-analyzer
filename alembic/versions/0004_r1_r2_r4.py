@@ -19,6 +19,9 @@ EMBEDDING_DIM = 768
 
 
 def upgrade() -> None:
+    # alembic_version.version_num 기본 크기(32)가 긴 revision ID를 수용 못하므로 확장
+    op.execute("ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(64)")
+
     # R1: (user_id, source_type, external_id) 유일성 제약
     # external_id가 NULL인 행은 제약 대상에서 제외된다(PostgreSQL NULL 동등 비교 특성)
     op.create_unique_constraint(
@@ -31,7 +34,7 @@ def upgrade() -> None:
     op.create_table(
         "blog_diagnoses",
         sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
-        sa.Column("user_id", sa.BigInteger, nullable=False, index=True),
+        sa.Column("user_id", sa.BigInteger, nullable=False),
         sa.Column(
             "analysis_job_id",
             sa.BigInteger,
@@ -56,7 +59,7 @@ def upgrade() -> None:
     op.create_table(
         "profile_embeddings",
         sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
-        sa.Column("user_id", sa.BigInteger, nullable=False, index=True),
+        sa.Column("user_id", sa.BigInteger, nullable=False),
         sa.Column("embedding", Vector(EMBEDDING_DIM), nullable=False),
         sa.Column(
             "created_at",
