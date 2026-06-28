@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     ollama_chat_model: str = Field(default="qwen2.5:7b")
     ollama_embedding_model: str = Field(default="nomic-embed-text")
 
+    # Gemini (llm_provider=gemini 시 사용)
+    gemini_api_key: str = Field(default="")
+    gemini_chat_model: str = Field(default="gemini-2.0-flash")
+    gemini_embedding_model: str = Field(default="text-embedding-004")
+
     # Demo mode: LLM 호출 없이 고정 결과 반환
     demo_mode: bool = Field(default=False)
 

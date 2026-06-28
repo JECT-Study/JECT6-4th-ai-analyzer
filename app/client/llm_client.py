@@ -90,6 +90,12 @@ class LLMClient:
                 base_url=f"{self._settings.ollama_base_url}/v1",
                 api_key="ollama",
             )
+        elif provider == "gemini":
+            # Google AI Studio OpenAI 호환 엔드포인트 사용
+            self._client = AsyncOpenAI(
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                api_key=self._settings.gemini_api_key,
+            )
         else:
             # openai (default)
             self._client = AsyncOpenAI(api_key=self._settings.openai_api_key)
@@ -101,12 +107,16 @@ class LLMClient:
         provider = self._settings.llm_provider.lower()
         if provider == "ollama":
             return self._settings.ollama_chat_model
+        if provider == "gemini":
+            return self._settings.gemini_chat_model
         return self._settings.llm_model
 
     def _embedding_model(self) -> str:
         provider = self._settings.llm_provider.lower()
         if provider == "ollama":
             return self._settings.ollama_embedding_model
+        if provider == "gemini":
+            return self._settings.gemini_embedding_model
         return self._settings.embedding_model
 
     def _supports_dimensions(self) -> bool:
@@ -182,8 +192,8 @@ class LLMClient:
                         "temperature": temperature,
                         "max_tokens": max_tokens,
                     }
-                    # Ollama는 response_format을 지원하지 않을 수 있으므로 openai 전용으로 제한
-                    if response_format and provider == "openai":
+                    # Ollama는 response_format을 지원하지 않을 수 있으므로 openai/gemini 전용으로 제한
+                    if response_format and provider in ("openai", "gemini"):
                         kwargs["response_format"] = response_format
                     response = await self._client.chat.completions.create(**kwargs)
                     if response.usage:
