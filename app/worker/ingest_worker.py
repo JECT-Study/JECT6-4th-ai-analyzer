@@ -17,6 +17,7 @@ from app.core.logging import get_logger, setup_logging
 from app.domain.enums import SourceType
 from app.domain.schemas import ChunkRequest
 from app.repository.crawl_queue import CrawlMessage, CrawlQueue
+from app.repository import influencer_repository
 from app.service.blog_snapshot_service import BlogSnapshotService
 from app.service.document_service import DocumentService
 
@@ -108,6 +109,26 @@ class IngestWorker:
             await self._queue.send_to_dlq(message, error_message=str(exc))
             await self._queue.ack(message.id)
             return
+
+        # ext_blog: 임베딩 성공 여부와 무관하게 인플루언서 프로필 먼저 저장
+        if chunk_request.source_type == SourceType.EXT_BLOG:
+            source_blog_url = metadata.get("source_blog_url")
+            if source_blog_url:
+                try:
+                    nickname = metadata.get("nickname")
+                    category = metadata.get("category")
+                    async with session_scope() as inf_session:
+                        await influencer_repository.upsert_influencer(
+                            inf_session,
+                            blog_url=source_blog_url,
+                            influencer_name=nickname,
+                            blog_name=nickname,
+                            title=chunk_request.title,
+                            thumbnail_url=None,
+                            category=category,
+                        )
+                except Exception as exc:
+                    logger.warning("influencer upsert failed blog_url=%s err=%s", source_blog_url, exc)
 
         try:
             async with session_scope() as session:

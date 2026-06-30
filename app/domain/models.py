@@ -137,6 +137,24 @@ class ProfileEmbedding(Base):
     )
 
 
+class Influencer(Base):
+    """인플루언서 프로필. Spring이 primary owner, Analyzer가 ext_blog 수집 시 upsert."""
+
+    __tablename__ = "influencer"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    influencer_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    blog_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    thumbnail_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    blog_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    category: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("blog_url", name="uq_influencer_blog_url"),
+    )
+
+
 class AnalysisJob(Base):
     """블로그 분석 잡 상태 추적."""
 
