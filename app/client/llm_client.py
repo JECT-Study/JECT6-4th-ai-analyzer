@@ -120,9 +120,14 @@ class LLMClient:
         return self._settings.embedding_model
 
     def _supports_dimensions(self) -> bool:
-        """OpenAI text-embedding-3-* 계열만 dimensions 파라미터를 지원한다."""
+        """OpenAI text-embedding-3-* / Gemini gemini-embedding-* 계열만 dimensions 파라미터를 지원한다."""
         provider = self._settings.llm_provider.lower()
-        return provider == "openai" and self._embedding_model().startswith("text-embedding-3")
+        model = self._embedding_model()
+        if provider == "openai":
+            return model.startswith("text-embedding-3")
+        if provider == "gemini":
+            return model.startswith("gemini-embedding")
+        return False
 
     def count_tokens(self, text: str) -> int:
         return len(self._encoder.encode(text))

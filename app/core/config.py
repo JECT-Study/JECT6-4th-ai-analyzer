@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     # Gemini (llm_provider=gemini 시 사용)
     gemini_api_key: str = Field(default="")
     gemini_chat_model: str = Field(default="gemini-2.0-flash")
-    gemini_embedding_model: str = Field(default="text-embedding-004")
+    gemini_embedding_model: str = Field(default="gemini-embedding-001")
 
     # Demo mode: LLM 호출 없이 고정 결과 반환
     demo_mode: bool = Field(default=False)
