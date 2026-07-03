@@ -4,6 +4,7 @@ import asyncio
 import json
 from collections.abc import Sequence
 
+import httpx
 import tiktoken
 from openai import APIError, AsyncOpenAI, RateLimitError
 from tenacity import (
@@ -185,6 +186,14 @@ class LLMClient:
         if provider == "demo":
             return _DEMO_ANALYSIS_RESULT
 
+        if provider == "ollama" and response_format and response_format.get("type") == "json_object":
+            return await self._chat_ollama_native_json(
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                schema=response_format.get("schema"),
+            )
+
         async with self._semaphore:
             with _span("llm.chat") as span:
                 span.set_attribute("llm.model", self._chat_model())
@@ -218,6 +227,54 @@ class LLMClient:
                     if _OTEL_AVAILABLE:
                         span.set_status(_otel_trace.Status(_otel_trace.StatusCode.ERROR))
                     logger.error("chat completion failed: %s", exc)
+                    raise LLMClientError(f"chat completion failed: {exc}") from exc
+
+    async def _chat_ollama_native_json(
+        self,
+        messages: list[ChatMessage],
+        *,
+        temperature: float,
+        max_tokens: int,
+        schema: dict | None = None,
+    ) -> str:
+        """Ollama 네이티브 API(/api/chat)로 JSON 스키마를 문법 수준에서 강제한다.
+
+        OpenAI 호환 엔드포인트에 response_format을 실어 보내면 Ollama가 응답 없이
+        멈추고(hang), 프롬프트 지시만으로는 thinking 모델(qwen3 등)이 스키마를 무시하고
+        참고 컨텍스트에 섞인 다른 문서의 포맷을 그대로 따라 하는 경우가 잦았다.
+        format에 실제 JSON 스키마를 넘기면 그 필드로만 응답하도록 문법 수준에서 강제된다
+        (스키마가 없으면 "json" 문자열로 최소한 valid JSON만 보장).
+        """
+        async with self._semaphore:
+            with _span("llm.chat") as span:
+                span.set_attribute("llm.model", self._chat_model())
+                span.set_attribute("llm.message_count", len(messages))
+                span.set_attribute("llm.temperature", temperature)
+                try:
+                    payload = {
+                        "model": self._chat_model(),
+                        "messages": [m.model_dump() for m in messages],
+                        "stream": False,
+                        "think": False,
+                        "format": schema if schema else "json",
+                        "options": {
+                            "temperature": temperature,
+                            "num_predict": max_tokens,
+                        },
+                    }
+                    async with httpx.AsyncClient(timeout=180.0) as client:
+                        resp = await client.post(
+                            f"{self._settings.ollama_base_url}/api/chat",
+                            json=payload,
+                        )
+                        resp.raise_for_status()
+                        data = resp.json()
+                    return data.get("message", {}).get("content") or ""
+                except Exception as exc:
+                    span.record_exception(exc)
+                    if _OTEL_AVAILABLE:
+                        span.set_status(_otel_trace.Status(_otel_trace.StatusCode.ERROR))
+                    logger.error("ollama native chat failed: %s", exc)
                     raise LLMClientError(f"chat completion failed: {exc}") from exc
 
 

@@ -305,6 +305,12 @@ class AnalysisService:
         user_content = f"제목: {title}\n\n본문:\n{truncated}"
         if rag_context:
             user_content = rag_context + user_content
+        # 컨텍스트가 여러 출처(블로그/공고/인플루언서)를 섞어 넣다 보니 일부 로컬 모델이
+        # 지시를 무시하고 일반 대화 답변을 하는 경우가 있어, 마지막에 지시를 한 번 더 강조한다.
+        user_content += (
+            "\n\n---\n위 내용을 분석 대상으로 삼아, 다른 설명이나 대화 없이 "
+            "system 메시지의 JSON 스키마와 정확히 일치하는 JSON 객체만 출력하세요."
+        )
 
         raw = await self._llm.chat(
             messages=[
@@ -312,8 +318,12 @@ class AnalysisService:
                 ChatMessage(role=ChatRole.USER, content=user_content),
             ],
             temperature=0.3,
-            max_tokens=1500,
-            response_format={"type": "json_object"},
+            # thinking 모델(Ollama qwen3/gemma 등)이 reasoning에 토큰을 소비하면
+            # 실제 JSON 응답이 빈 문자열로 잘리므로 여유 있게 잡는다.
+            max_tokens=6000,
+            # Ollama는 schema를 얹어주면 문법 수준에서 정확히 이 필드로만 응답하도록 강제할 수 있다
+            # (프롬프트 지시만으로는 참고 컨텍스트의 포맷을 그대로 따라 하는 경우가 있었다).
+            response_format={"type": "json_object", "schema": AnalysisResult.model_json_schema()},
         )
         try:
             parsed = json.loads(raw)
