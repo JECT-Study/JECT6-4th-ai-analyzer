@@ -206,9 +206,10 @@ class LLMClient:
                         "temperature": temperature,
                         "max_tokens": max_tokens,
                     }
-                    # Ollama는 response_format을 지원하지 않을 수 있으므로 openai/gemini 전용으로 제한
+                    # Ollama는 response_format을 지원하지 않을 수 있으므로 openai/gemini 전용으로 제한.
+                    # "schema" 키는 Ollama 네이티브 경로 전용 확장이라 OpenAI 호환 API에는 type만 전달한다.
                     if response_format and provider in ("openai", "gemini"):
-                        kwargs["response_format"] = response_format
+                        kwargs["response_format"] = {"type": response_format["type"]}
                     response = await self._client.chat.completions.create(**kwargs)
                     if response.usage:
                         span.set_attribute("llm.tokens.prompt", response.usage.prompt_tokens)
